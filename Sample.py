@@ -98,15 +98,17 @@ def test(model, data_loader, criterion, device):
             output = model(source)
             #output = output.view(360,360)
             output = output.view(180,360)
-            # L2 relative loss
+            
+            # ---- L2 relative loss ----
             # loss = criterion(output, target[0][0])
             # norm = torch.norm(target) ** 2
             # error += loss.item() / norm * 180 * 360
 
-            # L infinity relative loss 
+            # ---- L infinity relative loss ----
             loss = torch.max(torch.abs(output-target[0][0]))
             norm = torch.max(target[0][0])
             error = loss / norm
+
             test_number += 1
     return error, test_number
 
