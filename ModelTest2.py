@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from Sample import *
+from my_utils import *
 from torch.nn import Transformer
 from torchvision.models import vision_transformer as vit
 

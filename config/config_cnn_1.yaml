@@ -1,0 +1,35 @@
+# config file for vcnn
+
+model:
+  name: 'CNN'
+  channels: 48
+  kernel_size: 7
+  padding: 3
+
+data:
+  file_path: './sst_weekly.mat'
+
+training:
+  batch_size: 50
+  learning_rate: 0.001
+  start_point: 10
+  sensor_num: [10, 20, 30, 50, 100]
+  sensor_seed: [4, 20, 75, 138, 278]
+  sigma: 0.05
+  input_type: "CNN"
+
+testing:
+  batch_size: 10
+  start_point: 1098
+  norm: "L2"
+  sensor_num: [10, 20, 30, 50, 70, 100, 200]
+  sensor_seed: [553, 897, 1016, 1255, 1437]
+  sigma: 0.05
+  input_type: "CNN"
+
+device:
+  prefer_gpu: true
+
+output:
+  model_result: 'sst_cnn_result_1'
+  model_save_path: 'model/sst_cnn_test_1.pth'

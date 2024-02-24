@@ -1,0 +1,39 @@
+# config file for vision transformer
+
+model:
+  name: 'VisionTransformer'
+  image_size: 360
+  patch_size: 18
+  num_layers: 24
+  num_heads: 16
+  hidden_dim: 512
+  mlp_dim: 2048
+  num_classes: 64800  # Assuming 180*360
+
+data:
+  file_path: './sst_weekly.mat'
+
+training:
+  batch_size: 3
+  learning_rate: 0.001
+  start_point: 10
+  sensor_num: [10, 20, 30, 50, 100]
+  sensor_seed: [4, 20, 75, 138, 278]
+  sigma: 0.1
+  input_type: "VIT"
+
+testing:
+  batch_size: 10
+  start_point: 1098
+  norm: "L2"
+  sensor_num: [10, 20, 30, 50, 70, 100, 200]
+  sensor_seed: [553, 897, 1016, 1255, 1437]
+  sigma: 0.1
+  input_type: "VIT"
+
+device:
+  prefer_gpu: true
+
+output:
+  model_result: 'sst_vit_result_17'
+  model_save_path: 'model/sst_vit_test_1.pth'

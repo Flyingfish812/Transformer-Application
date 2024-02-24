@@ -31,28 +31,30 @@ def expand(map):
 
 # Turning a map into an input that can be used by model
 # The source is considered as a 180*360 matrix
-def to_input(source, device, doexpand = False):
-    if doexpand:
+def to_input(source, device, inputType = "VIT"):
+    if(inputType == "VIT"):
         source = expand(source)
-    return torch.from_numpy(source.copy()).unsqueeze(0).unsqueeze(0).to(torch.float32).repeat(1,3,1,1).to(device)
+    tensor = torch.from_numpy(source.copy())    # To a tensor
+    tensor = tensor.to(torch.float32)
+    tensor = tensor.unsqueeze(0).unsqueeze(0)   # Fit the size
+    if(inputType == "VIT" or inputType == "RES"):
+        tensor = tensor.repeat(1,3,1,1)
+    tensor = tensor.to(device)                  # To specific device
+    return tensor
 
 # If you want to get one sample to visualize
 def get_one_sample(n: int, lat, lon, time, sst_all, device, 
-                   sensor_num = 15, sensor_seed = 200, sparse_location = None, toinput = True):
+                   sigma = 0, sensor_num = 15, sensor_seed = 200, sparse_location = None, inputType = "VIT"):
     sst = sst_all[n]
-    sst_obj = SST(lat, lon, sst, time, sensor_num, sensor_seed, sparse_location)
+    sst_obj = SST(lat, lon, sst, time, sensor_num, sensor_seed, sparse_location, sigma)
     target, source, source_map = sst_obj.get_trainer()
-    if toinput:
-        source = to_input(source, device, True)
-        source_map = to_input(source_map, device, True)
-        target = to_input(target, device, False)
-    else:
-        source = source
-        target = target
+    source = to_input(source, device, inputType = inputType)
+    source_map = to_input(source_map, device, inputType = inputType)
+    target = torch.from_numpy(target.copy()).to(device)
     return target, source, source_map
 
 # Generate the data sets
-def data_geneator(lat, lon, time, sst_all, batch_size, device, start_point = 0, sensor_num = None, sensor_seed = None):
+def data_geneator(lat, lon, time, sst_all, batch_size, device, start_point = 0, sensor_num = None, sensor_seed = None, sigma = 0, inputType = "VIT"):
     if(sensor_num == None):
         sensor_num = [10, 20, 30, 50, 100]
     if(sensor_seed == None):
@@ -60,62 +62,82 @@ def data_geneator(lat, lon, time, sst_all, batch_size, device, start_point = 0, 
     for i in range(batch_size):
         for j in sensor_num:
             for k in sensor_seed:
-                target, source, source_map = get_one_sample(start_point+i, lat, lon, time, sst_all, device, j, k)
-                # sst = sst_all[start_point+i]
-                # sst_obj = SST(lat, lon, sst, time, j, k)
-                # target, source, source_map = sst_obj.get_trainer()
-                # target = torch.from_numpy(target.copy()).unsqueeze(0).unsqueeze(0)
-                # source = torch.from_numpy(expand(source).copy()).unsqueeze(0).unsqueeze(0)
-                # source_map = torch.from_numpy(expand(source_map).copy()).unsqueeze(0).unsqueeze(0)
+                target, source, source_map = get_one_sample(start_point+i, 
+                                                            lat, lon, time, sst_all, 
+                                                            device, sigma, 
+                                                            sensor_num = j, sensor_seed = k,
+                                                            inputType = inputType)
+                
                 yield (target, source, source_map)
 
 # Train function
-def train(model, data_loader, optimizer, criterion, device):
+from torch.optim.swa_utils import AveragedModel, SWALR
+from torch.optim.lr_scheduler import CosineAnnealingLR
+def train(model, data_loader, optimizer, criterion, method = 'base', swa_start = 10):
     total_loss = 0.0
+    count = 0
+    if(method == 'SWA'):
+        swa_model = AveragedModel(model)
+        scheduler = CosineAnnealingLR(optimizer, T_max=100)
+        swa_scheduler = SWALR(optimizer, swa_lr=0.05)
+
     model.train()
     for target, source, source_map in tqdm(data_loader):
-        # batch_input = source.to(torch.float32).repeat(1,3,1,1).to(device)
-        # batch_target = target.to(torch.float32).repeat(1,3,1,1).to(device)
+        count += 1
         optimizer.zero_grad()
         output = model(source)
-        #output = output.view(360,360)
         output = output.view(180,360)
-        loss = criterion(output, target[0][0])
+        loss = criterion(output, target)
         loss.backward()
         optimizer.step()
+        if(method == 'SWA'):
+            if count >= swa_start:
+                swa_model.update_parameters(model)
+                swa_scheduler.step()
+            else:
+                scheduler.step()
         total_loss += loss.item()
-    return total_loss
+    return total_loss / count
 
 # Test function
-def test(model, data_loader, criterion, device):
+def test(model, data_loader, criterion, device, norm = "L2"):
     model.eval()
     error = 0.0
+    max_error = 0.0
+    min_error = 10000.0
     test_number = 0
     with torch.no_grad():
         for target, source, source_map in tqdm(data_loader):
             # batch_input = source.to(torch.float32).repeat(1,3,1,1).to(device)
             # batch_target = target.to(torch.float32).repeat(1,3,1,1).to(device)
             output = model(source)
-            #output = output.view(360,360)
             output = output.view(180,360)
             
             # ---- L2 relative loss ----
-            # loss = criterion(output, target[0][0])
-            # norm = torch.norm(target) ** 2
-            # error += loss.item() / norm * 180 * 360
+            if norm == "L2":
+                loss = torch.norm(output - target, p=2)
+                norm = torch.norm(target, p=2)
+                error_val = loss / norm
+                error = error + error_val
+                if error_val > max_error: max_error = error_val
+                if error_val < min_error: min_error = error_val
 
             # ---- L infinity relative loss ----
-            loss = torch.max(torch.abs(output-target[0][0]))
-            norm = torch.max(target[0][0])
-            error = loss / norm
+            elif norm == "Linf":
+                loss = torch.max(torch.abs(output-target))
+                norm = torch.max(target)
+                error_val = loss / norm
+                error = error + error_val
+                if error_val > max_error: max_error = error_val
+                if error_val < min_error: min_error = error_val
 
             test_number += 1
-    return error, test_number
+    return error, test_number, max_error, min_error
 
 # An SST object contains a sample map and an overall map
 class SST:
     # Latitude list, Longtitude list, one sst value table, measured time, number of sensor, seed for distribution
-    def __init__(self, lat, lon, sst, time, sensor_num, sensor_seed, sparse_location = None):
+    def __init__(self, lat, lon, sst, time, sensor_num, sensor_seed, sparse_location = None, sigma = 0):
         self.lat = lat[0]
         self.lon = lon[0]
         self.sst = sst
@@ -123,6 +145,7 @@ class SST:
         self.sensor_num = sensor_num
         self.sensor_seed = sensor_seed
         self.sparse_location = sparse_location
+        self.sigma = sigma  # Coefficient of Gaussian noise
 
         self.lat_length = len(self.lat)
         self.lon_length = len(self.lon)
@@ -164,7 +187,8 @@ class SST:
         sparse_data = np.zeros((self.sensor_num))
         for i in range(self.sensor_num):
             [locations_lat, locations_lon] = sparse_locations[i]
-            sparse_data[i] = (sst_data[int(locations_lat),int(locations_lon)])
+            noise_factor = np.random.normal(0,self.sigma)
+            sparse_data[i] = (sst_data[int(locations_lat),int(locations_lon)]) * (1 + noise_factor)  # Add a random noise
         
         # Get the exact location of sample
         sparse_locations_exact = np.zeros(sparse_locations.shape)
