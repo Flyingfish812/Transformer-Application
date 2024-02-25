@@ -2,22 +2,23 @@
 
 model:
   name: 'VisionTransformer'
+  load_weights: False
   image_size: 360
   patch_size: 18
-  num_layers: 24
+  num_layers: 12
   num_heads: 16
-  hidden_dim: 512
-  mlp_dim: 2048
+  hidden_dim: 256
+  mlp_dim: 1024
   num_classes: 64800  # Assuming 180*360
 
 data:
   file_path: './sst_weekly.mat'
 
 training:
-  batch_size: 3
+  batch_size: 64
   learning_rate: 0.001
   start_point: 10
-  sensor_num: [10, 20, 30, 50, 100]
+  sensor_num: [10]
   sensor_seed: [4, 20, 75, 138, 278]
   sigma: 0.05
   input_type: "VIT"

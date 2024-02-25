@@ -1,3 +1,6 @@
 *.pth
 *.mat
+*.ipynb
+result
+dataset_*.py
 __pycache__

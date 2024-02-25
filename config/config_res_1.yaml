@@ -2,16 +2,17 @@
 
 model:
   name: 'ResNet'
+  load_weights: False
   size: 18
 
 data:
   file_path: './sst_weekly.mat'
 
 training:
-  batch_size: 50
+  batch_size: 64
   learning_rate: 0.001
   start_point: 10
-  sensor_num: [10, 20, 30, 50, 100]
+  sensor_num: [10]
   sensor_seed: [4, 20, 75, 138, 278]
   sigma: 0.05
   input_type: "RES"
@@ -30,4 +31,4 @@ device:
 
 output:
   model_result: 'sst_res_result_1'
-  model_save_path: './sst_res_test.pth'
+  model_save_path: 'model/sst_res_test.pth'

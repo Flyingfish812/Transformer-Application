@@ -54,85 +54,133 @@ def get_one_sample(n: int, lat, lon, time, sst_all, device,
     return target, source, source_map
 
 # Generate the data sets
-def data_geneator(lat, lon, time, sst_all, batch_size, device, start_point = 0, sensor_num = None, sensor_seed = None, sigma = 0, inputType = "VIT"):
-    if(sensor_num == None):
+def data_generator(lat, lon, time, sst_all, batch_size, device,
+                   start_point=0, sensor_num=None, sensor_seed=None,
+                   sigma=0, inputType="VIT", onlytest=False):
+    if sensor_num is None:
         sensor_num = [10, 20, 30, 50, 100]
-    if(sensor_seed == None):
+    if sensor_seed is None:
         sensor_seed = [1, 10, 25, 51, 199]
+
+    total_samples = batch_size * len(sensor_num) * len(sensor_seed)
+    train_cutoff = int(0.75 * total_samples)
+    test_cutoff = train_cutoff + int(0.05 * total_samples)
+    # No need for a verification cutoff since it's the remainder
+
+    current_sample = 0
+
     for i in range(batch_size):
         for j in sensor_num:
             for k in sensor_seed:
-                target, source, source_map = get_one_sample(start_point+i, 
-                                                            lat, lon, time, sst_all, 
-                                                            device, sigma, 
-                                                            sensor_num = j, sensor_seed = k,
-                                                            inputType = inputType)
-                
-                yield (target, source, source_map)
+                target, source, source_map = get_one_sample(start_point + i,
+                                                            lat, lon, time, sst_all,
+                                                            device, sigma,
+                                                            sensor_num=j, sensor_seed=k,
+                                                            inputType=inputType)
+                if onlytest:
+                    category = 'test'
+                elif current_sample < train_cutoff:
+                    category = 'train'
+                elif current_sample < test_cutoff:
+                    category = 'test'
+                else:
+                    category = 'verify'
+
+                yield (target, source, source_map, category)
+                current_sample += 1
 
 # Train function
 from torch.optim.swa_utils import AveragedModel, SWALR
-from torch.optim.lr_scheduler import CosineAnnealingLR
-def train(model, data_loader, optimizer, criterion, method = 'base', swa_start = 10):
+def train(model, data_loader, optimizer, scheduler, criterion, device, method='base', step_size=10):
+    train_loss = []
     total_loss = 0.0
     count = 0
-    if(method == 'SWA'):
+    verification_loss = []
+    verification_count = 0
+
+    if method == 'SWA':
         swa_model = AveragedModel(model)
-        scheduler = CosineAnnealingLR(optimizer, T_max=100)
         swa_scheduler = SWALR(optimizer, swa_lr=0.05)
 
     model.train()
-    for target, source, source_map in tqdm(data_loader):
-        count += 1
-        optimizer.zero_grad()
-        output = model(source)
-        output = output.view(180,360)
-        loss = criterion(output, target)
-        loss.backward()
-        optimizer.step()
-        if(method == 'SWA'):
-            if count >= swa_start:
+    for target, source, _, category in tqdm(data_loader):
+        if category == 'train':
+            count += 1
+            optimizer.zero_grad()
+            output = model(source.to(device))
+            output = output.view(180, 360)
+            loss = criterion(output, target.to(device))
+            loss.backward()
+            optimizer.step()
+            train_loss.append(loss.item())
+            total_loss += loss.item()
+
+            # Adjust learning rate for basic training method after every step_size batches
+            if method == 'base' and count % step_size == 0:
+                avg_loss = total_loss / step_size
+                scheduler.step(avg_loss)  # Adjust learning rate based on the average loss of recent batches
+                total_loss = 0.0  # Reset total loss for the next set of batches
+
+            # For SWA, update parameters and adjust SWA scheduler after step_size batches
+            elif method == 'SWA' and count % step_size == 0:
                 swa_model.update_parameters(model)
                 swa_scheduler.step()
-            else:
-                scheduler.step()
-        total_loss += loss.item()
-    return total_loss / count
+
+        elif category == 'verify':
+            model.eval()
+            with torch.no_grad():
+                verification_count += 1
+                output = model(source.to(device))
+                output = output.view(180, 360)
+                loss = criterion(output, target.to(device))
+                verification_loss.append(loss.item())
+            model.train()
+
+    # train_loss = sum(total_loss) / count if count != 0 else 0
+    # verify_loss = sum(verification_loss) / verification_count if verification_count != 0 else 0
+
+    if method == 'SWA':
+        swa_model.update_parameters(model)
+    
+    return train_loss, verification_loss
+
 
 # Test function
-def test(model, data_loader, criterion, device, norm = "L2"):
+def test(model, data_loader, device, norm="L2"):
     model.eval()
     error = 0.0
     max_error = 0.0
     min_error = 10000.0
     test_number = 0
+
     with torch.no_grad():
-        for target, source, source_map in tqdm(data_loader):
-            # batch_input = source.to(torch.float32).repeat(1,3,1,1).to(device)
-            # batch_target = target.to(torch.float32).repeat(1,3,1,1).to(device)
-            output = model(source)
-            output = output.view(180,360)
-            
-            # ---- L2 relative loss ----
+        for target, source, _, category in tqdm(data_loader):
+            if category != 'test':
+                continue
+
+            output = model(source.to(device))
+            output = output.view(180, 360)
+
+            # L2 relative loss
             if norm == "L2":
-                loss = torch.norm(output - target, p=2)
-                norm = torch.norm(target, p=2)
-                error_val = loss / norm
-                error = error + error_val
-                if error_val > max_error: max_error = error_val
-                if error_val < min_error: min_error = error_val
+                loss = torch.norm(output - target.to(device), p=2)
+                norm_val = torch.norm(target.to(device), p=2)
+                error_val = loss / norm_val
 
-            # ---- L infinity relative loss ----
+            # L infinity relative loss
             elif norm == "Linf":
-                loss = torch.max(torch.abs(output-target))
-                norm = torch.max(target)
-                error_val = loss / norm
-                error = error + error_val
-                if error_val > max_error: max_error = error_val
-                if error_val < min_error: min_error = error_val
+                loss = torch.max(torch.abs(output - target.to(device)))
+                norm_val = torch.max(target.to(device))
+                error_val = loss / norm_val
 
+            error += error_val.item()
+            max_error = max(max_error, error_val.item())
+            min_error = min(min_error, error_val.item())
             test_number += 1
-    return error, test_number, max_error, min_error
+
+    average_error = error / test_number if test_number != 0 else 0
+    return average_error, test_number, max_error, min_error
+
 
 # An SST object contains a sample map and an overall map
 class SST:
