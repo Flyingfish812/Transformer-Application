@@ -78,6 +78,71 @@ import torch.nn as nn
 import torchvision.models as models
 from torchvision.models.resnet import ResNet101_Weights, ResNet50_Weights, ResNet34_Weights, ResNet18_Weights
 from torchvision.models import vision_transformer as vit
+import torchvision.transforms.functional as F
+
+# class ResizeBlock(nn.Module):
+#     def __init__(self, input_dim, output_dim=(180,360), intermediate_channels=8):
+#         super(ResizeBlock, self).__init__()
+#         self.intermediate_channels = intermediate_channels
+#         # Calculate the size needed to reshape the input tensor before applying convolutions
+#         self.pre_conv_size = (1, int(input_dim ** 0.5), int(input_dim ** 0.5))  # Example size, adjust based on your model's architecture
+        
+#         self.conv1 = nn.Conv2d(in_channels=1, out_channels=intermediate_channels, kernel_size=(7, 7))
+#         self.bn1 = nn.BatchNorm2d(intermediate_channels)
+#         self.relu = nn.ReLU(inplace=True)
+#         self.conv2 = nn.Conv2d(in_channels=intermediate_channels, out_channels=1, kernel_size=(7, 7))
+        
+#         # Additional layers can be added here if needed for further processing
+        
+#         # Adaptive pooling layer to match the output dimensions
+#         self.adaptive_pool = nn.AdaptiveAvgPool2d(output_dim)
+        
+#     def forward(self, x):
+#         # Reshape x from (batch_size, input_dim) to (batch_size, intermediate_channels, H, W)
+#         # Note: The reshape dimensions must align with the model's architecture and expected input size of the first conv layer
+#         x = x.view(-1, *self.pre_conv_size)
+#         x = self.conv1(x)
+#         x = self.bn1(x)
+#         x = self.relu(x)
+#         x = self.conv2(x)
+        
+#         # Apply adaptive pooling to achieve the desired output size
+#         x = self.adaptive_pool(x)
+        
+#         # Flatten the output to match the target dimension (batch_size, 64800)
+#         x = x.view(x.size(0), -1)
+#         return x
+
+class ResizeBlock(nn.Module):
+    def __init__(self, input_dim, output_dim=64800):
+        super(ResizeBlock, self).__init__()
+        # Define a linear layer to transform the input tensor to the desired output size
+        self.resize = nn.Linear(input_dim, output_dim)
+        
+    def forward(self, x):
+        # Apply the linear transformation
+        x = self.resize(x)
+        return x
+
+class CustomViT(nn.Module):
+    def __init__(self, config):
+        super(CustomViT, self).__init__()
+        self.vit = vit.VisionTransformer(
+            image_size=config['image_size'],
+            patch_size=config['patch_size'],
+            num_layers=config['num_layers'],
+            num_heads=config['num_heads'],
+            hidden_dim=config['hidden_dim'],
+            mlp_dim=config['mlp_dim'],
+            num_classes=config['num_classes']  # Set to intermediate dimension
+        )
+        self.resize_block = ResizeBlock(input_dim=config['num_classes'], output_dim=64800)
+
+    def forward(self, x):
+        x = self.vit(x)  # Pass input through Vision Transformer
+        x = self.resize_block(x)  # Use the effective resize block
+        return x
+
 
 class CNN(nn.Module):
     def __init__(self, channels, kernel_size, padding):
@@ -113,8 +178,9 @@ class ResNet(nn.Module):
             weights = ResNet18_Weights.DEFAULT
             base_model = models.resnet18(weights=weights)
         elif n == 34:
-            weights = ResNet34_Weights.DEFAULT
-            base_model = models.resnet34(weights=weights)
+            # weights = ResNet34_Weights.DEFAULT
+            # base_model = models.resnet34(weights=weights)
+            base_model = models.resnet34()
         elif n == 50:
             weights = ResNet50_Weights.DEFAULT
             base_model = models.resnet50(weights=weights)
@@ -146,6 +212,7 @@ class ResNet(nn.Module):
 
 def build_model(config):
     if(config['name'] == 'VisionTransformer'):
+        # model = CustomViT(config)
         model = vit.VisionTransformer(
             image_size=config['image_size'],
             patch_size=config['patch_size'],
@@ -153,7 +220,7 @@ def build_model(config):
             num_heads=config['num_heads'],
             hidden_dim=config['hidden_dim'],
             mlp_dim=config['mlp_dim'],
-            num_classes=config['num_classes']
+            num_classes=64800
         )
     elif(config['name'] == 'CNN'):
         model = CNN(

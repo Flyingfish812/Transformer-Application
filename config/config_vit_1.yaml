@@ -8,14 +8,15 @@ model:
   num_layers: 12
   num_heads: 16
   hidden_dim: 256
-  mlp_dim: 1024
+  mlp_dim: 2048
   num_classes: 64800  # Assuming 180*360
 
 data:
   file_path: './sst_weekly.mat'
 
 training:
-  batch_size: 64
+  fig_num: 64
+  batch_size: 4
   learning_rate: 0.001
   start_point: 10
   sensor_num: [10]
@@ -24,10 +25,11 @@ training:
   input_type: "VIT"
 
 testing:
-  batch_size: 10
+  fig_num: 16
+  batch_size: 4
   start_point: 1098
   norm: "L2"
-  sensor_num: [10, 20, 30, 50, 70, 100, 200]
+  sensor_num: [20, 30, 50, 70, 100, 200]
   sensor_seed: [553, 897, 1016, 1255, 1437]
   sigma: 0.05
   input_type: "VIT"

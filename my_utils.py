@@ -3,6 +3,7 @@ import numpy as np
 import h5py
 import torch
 import copy
+import torch.nn as nn
 from tqdm import tqdm
 from scipy.interpolate import griddata
 
@@ -36,9 +37,9 @@ def to_input(source, device, inputType = "VIT"):
         source = expand(source)
     tensor = torch.from_numpy(source.copy())    # To a tensor
     tensor = tensor.to(torch.float32)
-    tensor = tensor.unsqueeze(0).unsqueeze(0)   # Fit the size
-    if(inputType == "VIT" or inputType == "RES"):
-        tensor = tensor.repeat(1,3,1,1)
+    # tensor = tensor.unsqueeze(0).unsqueeze(0)   # Fit the size
+    # if(inputType == "VIT" or inputType == "RES"):
+    #     tensor = tensor.repeat(1,3,1,1)
     tensor = tensor.to(device)                  # To specific device
     return tensor
 
@@ -50,11 +51,12 @@ def get_one_sample(n: int, lat, lon, time, sst_all, device,
     target, source, source_map = sst_obj.get_trainer()
     source = to_input(source, device, inputType = inputType)
     source_map = to_input(source_map, device, inputType = inputType)
-    target = torch.from_numpy(target.copy()).to(device)
-    return target, source, source_map
+    target = torch.from_numpy(target.copy()).to(device).unsqueeze(0)
+    combined_source = torch.stack([source.unsqueeze(0), source_map.unsqueeze(0), source.unsqueeze(0) * source_map.unsqueeze(0)], dim=1)
+    return target, combined_source
 
 # Generate the data sets
-def data_generator(lat, lon, time, sst_all, batch_size, device,
+def data_generator(lat, lon, time, sst_all, fig_num, batch_size, device,
                    start_point=0, sensor_num=None, sensor_seed=None,
                    sigma=0, inputType="VIT", onlytest=False):
     if sensor_num is None:
@@ -62,104 +64,152 @@ def data_generator(lat, lon, time, sst_all, batch_size, device,
     if sensor_seed is None:
         sensor_seed = [1, 10, 25, 51, 199]
 
-    total_samples = batch_size * len(sensor_num) * len(sensor_seed)
-    train_cutoff = int(0.75 * total_samples)
-    test_cutoff = train_cutoff + int(0.05 * total_samples)
-    # No need for a verification cutoff since it's the remainder
+    total_samples = fig_num * len(sensor_num) * len(sensor_seed) // batch_size
+    train_cutoff = int(0.85 * total_samples)
+    verify_cutoff = train_cutoff + int(0.1 * total_samples)
 
     current_sample = 0
+    targets, sources = [], []
+    fig_num_list = list(range(fig_num))
+    np.random.shuffle(fig_num_list)
 
-    for i in range(batch_size):
+    for i in fig_num_list:
         for j in sensor_num:
             for k in sensor_seed:
-                target, source, source_map = get_one_sample(start_point + i,
-                                                            lat, lon, time, sst_all,
-                                                            device, sigma,
-                                                            sensor_num=j, sensor_seed=k,
-                                                            inputType=inputType)
+                target, source = get_one_sample(start_point + i,
+                                                lat, lon, time, sst_all,
+                                                device, sigma,
+                                                sensor_num=j, sensor_seed=k,
+                                                inputType=inputType)
                 if onlytest:
                     category = 'test'
                 elif current_sample < train_cutoff:
                     category = 'train'
-                elif current_sample < test_cutoff:
-                    category = 'test'
-                else:
+                elif current_sample < verify_cutoff:
                     category = 'verify'
+                else:
+                    category = 'test'
 
-                yield (target, source, source_map, category)
-                current_sample += 1
+                targets.append(target)
+                sources.append(source)
+
+                # Check if the batch has reached the specified batch size
+                if len(targets) == batch_size:
+                    yield (torch.cat(targets, dim=0), torch.cat(sources, dim=0), category)
+                    current_sample += 1
+                    targets, sources = [], []
+
+    # After the loop, yield any remaining samples in the batch
+    if targets:
+        yield (torch.cat(targets, dim=0), torch.cat(sources, dim=0), category)
+
+def factory(data_config):
+    lat, lon, time, sst_all = data_config['lat'], data_config['lon'], data_config['time'], data_config['sst_all']
+    fig_num = data_config['fig_num']
+    batch_size = data_config['batch_size']
+    device = data_config['device']
+    start_point = data_config['start_point']
+    sensor_num = data_config['sensor_num']
+    sensor_seed = data_config['sensor_seed']
+    sigma = data_config['sigma']
+    inputType = data_config['inputType']
+    data_gen = data_generator(lat, lon, time, sst_all, fig_num, batch_size, device, start_point, sensor_num, sensor_seed, sigma, inputType)
+    return data_gen
+
+def calculate_norm(output, target, type="L2"):
+    # L2 relative loss
+    if type == "L2":
+        loss = torch.norm(output - target, p=2)
+        norm_val = torch.norm(target, p=2)
+        error_val = loss / norm_val
+
+    # L infinity relative loss
+    elif type == "Linf":
+        loss = torch.max(torch.abs(output - target))
+        norm_val = torch.max(target)
+        error_val = loss / norm_val
+    
+    return error_val.item()
 
 # Train function
 from torch.optim.swa_utils import AveragedModel, SWALR
-def train(model, data_loader, optimizer, scheduler, criterion, device, method='base', step_size=10):
-    train_loss = []
-    total_loss = 0.0
+def train(model, data_config, optimizer, scheduler, criterion, device, method='base', step_size=16, num_epochs=2):
+    training_data = {}
+    total_loss = 0.0  # Used when using "base" method
     count = 0
-    verification_loss = []
-    verification_count = 0
+    validation_count = 0
 
     if method == 'SWA':
         swa_model = AveragedModel(model)
-        swa_scheduler = SWALR(optimizer, swa_lr=0.05)
+        swa_scheduler = SWALR(optimizer, swa_lr=0.05, anneal_strategy='cos')
 
-    model.train()
-    for target, source, _, category in tqdm(data_loader):
-        if category == 'train':
-            count += 1
-            optimizer.zero_grad()
-            output = model(source.to(device))
-            output = output.view(180, 360)
-            loss = criterion(output, target.to(device))
-            loss.backward()
-            optimizer.step()
-            train_loss.append(loss.item())
-            total_loss += loss.item()
-
-            # Adjust learning rate for basic training method after every step_size batches
-            if method == 'base' and count % step_size == 0:
-                avg_loss = total_loss / step_size
-                scheduler.step(avg_loss)  # Adjust learning rate based on the average loss of recent batches
-                total_loss = 0.0  # Reset total loss for the next set of batches
-
-            # For SWA, update parameters and adjust SWA scheduler after step_size batches
-            elif method == 'SWA' and count % step_size == 0:
-                swa_model.update_parameters(model)
-                swa_scheduler.step()
-
-        elif category == 'verify':
-            model.eval()
-            with torch.no_grad():
-                verification_count += 1
+    for epoch in range(num_epochs):
+        model.train()
+        train_loss, train_error = [], []
+        validation_loss, validation_error = [], []
+        data_gen = factory(data_config)
+        # if epoch == 1:
+        #     criterion = nn.CrossEntropyLoss()
+        for target, source, category in tqdm(data_gen):
+            if category == 'train':
+                count += 1
+                optimizer.zero_grad()
                 output = model(source.to(device))
-                output = output.view(180, 360)
+                output = output.view(-1, 180, 360)
                 loss = criterion(output, target.to(device))
-                verification_loss.append(loss.item())
-            model.train()
+                error = calculate_norm(output, target.to(device))
+                loss.backward()
+                optimizer.step()
+                if count % 32 == 0:
+                    for param_group in optimizer.param_groups:
+                        param_group['lr'] *= 0.1
+                train_loss.append(loss.item())
+                train_error.append(error)
+                total_loss += loss.item()
 
-    # train_loss = sum(total_loss) / count if count != 0 else 0
-    # verify_loss = sum(verification_loss) / verification_count if verification_count != 0 else 0
+                # Adjust learning rate for basic training method after every step_size batches
+                if method == 'base' and count % step_size == 0:
+                    avg_loss = total_loss / step_size
+                    scheduler.step(avg_loss)  # Adjust learning rate based on the average loss of recent batches
+                    total_loss = 0.0  # Reset total loss for the next set of batches
 
-    if method == 'SWA':
-        swa_model.update_parameters(model)
+                # For SWA, update parameters and adjust SWA scheduler after step_size batches
+                elif method == 'SWA' and count - step_size >= 0:
+                    swa_model.update_parameters(model)
+                    swa_scheduler.step()
+
+            elif category == 'verify':
+                model.eval()
+                with torch.no_grad():
+                    validation_count += 1
+                    output = model(source.to(device))
+                    output = output.view(-1, 180, 360)
+                    loss = criterion(output, target.to(device))
+                    error = calculate_norm(output, target.to(device))
+                    validation_loss.append(loss.item())
+                    validation_error.append(error)
+                # model.train()
+
+        if method == 'SWA':
+            swa_model.update_parameters(model)
+        training_data[epoch] = [train_loss, train_error, validation_loss, validation_error]
     
-    return train_loss, verification_loss
+    return training_data
 
 
 # Test function
 def test(model, data_loader, device, norm="L2"):
     model.eval()
-    error = 0.0
-    max_error = 0.0
-    min_error = 10000.0
+    train_error = 0.0
+    test_error = 0.0
+    # min_error = 10000.0
+    train_number = 0
     test_number = 0
 
     with torch.no_grad():
-        for target, source, _, category in tqdm(data_loader):
-            if category != 'test':
-                continue
-
+        for target, source, category in tqdm(data_loader):
             output = model(source.to(device))
-            output = output.view(180, 360)
+            output = output.view(-1, 180, 360)
 
             # L2 relative loss
             if norm == "L2":
@@ -173,13 +223,19 @@ def test(model, data_loader, device, norm="L2"):
                 norm_val = torch.max(target.to(device))
                 error_val = loss / norm_val
 
-            error += error_val.item()
-            max_error = max(max_error, error_val.item())
-            min_error = min(min_error, error_val.item())
-            test_number += 1
+            if category == "train":
+                train_error += error_val.item()
+                train_number += 1
+            else:
+                test_error += error_val.item()
+                test_number += 1
+            # max_error = max(max_error, error_val.item())
+            # min_error = min(min_error, error_val.item())
 
-    average_error = error / test_number if test_number != 0 else 0
-    return average_error, test_number, max_error, min_error
+    avg_error = (train_error + test_error) / (train_number + test_number) if test_number != 0 else 0
+    avg_train = train_error / train_number if train_number != 0 else 0
+    avg_test = test_error / test_number if test_number != 0 else 0
+    return avg_error, (train_number + test_number), avg_train, avg_test
 
 
 # An SST object contains a sample map and an overall map
