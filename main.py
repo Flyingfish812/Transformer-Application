@@ -11,10 +11,10 @@ def main(config_path):
     # Read config
     print('Reading Config ... ', end='')
     config = read_config(config_path)
-    session_num = config["training"]["fig_num"]*len(config["training"]["sensor_num"])*len(config["training"]["sensor_seed"])/config["training"]["batch_size"]
+    session_num = round(config["training"]["fig_num"]*len(config["training"]["sensor_num"])*len(config["training"]["sensor_seed"])/config["training"]["batch_size"])
     print('Complete')
     print(f'Model Name: {config["model"]["name"]}')
-    print(f'Expected sessions: {session_num}')
+    print(f'Expected sessions: {session_num}, with {config["training"]["num_epochs"]} epochs')
 
     # Load data
     print('Loading Data ... ', end='')
