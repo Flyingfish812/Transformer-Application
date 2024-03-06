@@ -52,7 +52,7 @@ def main(config_path):
                    "sigma": config['training']['sigma'],
                    "inputType": config['training']['input_type']}
     start_time = t.time()
-    training_data = train(model, data_config, optimizer, scheduler, criterion, device, method='SWA', step_size=16, num_epochs=num_epochs)
+    training_data = train(model, data_config, optimizer, scheduler, criterion, device, method='base', step_size=16, num_epochs=num_epochs)
     end_time = t.time()
     exec_time = end_time - start_time
     print(f'Training Complete in {exec_time:.2f} seconds')
@@ -61,25 +61,7 @@ def main(config_path):
     print('Saving Model and getting training patterns... ')
     torch.save(model.state_dict(), config['output']['model_save_path'])
     
-    all_data = {}
-    for i in range(len(training_data)):
-        data = training_data[i]
-        # Use the iteration number as the key
-        all_data[f'iteration_{i}'] = {
-            'train_loss': data[0], 
-            'train_error': data[1], 
-            'validation_loss': data[2], 
-            'validation_error': data[3]
-        }
-        # Printing the last values of each list in the current iteration
-        print(f'train_loss = {data[0][-1]}', end=', ')
-        print(f'train_error = {data[1][-1]}')
-        print(f'validation_loss = {data[2][-1]}', end=', ')
-        print(f'validation_error = {data[3][-1]}')
-
-    # Write the entire structure to the JSON file after the loop
-    with open('result/loss_data.json', 'w') as file:
-        json.dump(all_data, file, indent=4)  # Using indent for better readability
+    dump_result(config, training_data)
     print('Complete')
 
 

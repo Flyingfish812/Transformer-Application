@@ -148,8 +148,9 @@ def train(model, data_config, optimizer, scheduler, criterion, device, method='b
         train_loss, train_error = [], []
         validation_loss, validation_error = [], []
         data_gen = factory(data_config)
-        # if epoch == 1:
-        #     criterion = nn.CrossEntropyLoss()
+        if epoch > 0:
+            for param_group in optimizer.param_groups:
+                param_group['lr'] *= 0.1
         for target, source, category in tqdm(data_gen):
             if category == 'train':
                 count += 1
@@ -160,9 +161,6 @@ def train(model, data_config, optimizer, scheduler, criterion, device, method='b
                 error = calculate_norm(output, target.to(device))
                 loss.backward()
                 optimizer.step()
-                if count % 32 == 0:
-                    for param_group in optimizer.param_groups:
-                        param_group['lr'] *= 0.1
                 train_loss.append(loss.item())
                 train_error.append(error)
                 total_loss += loss.item()

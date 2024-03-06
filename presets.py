@@ -49,7 +49,7 @@ class CustomLRScheduler:
             param_group['lr'] = new_lr
         print(f"Reducing learning rate to {new_lr}")
 
-def build_optimizer(model, initial_lr=0.001, threshold=0.05, patience=3, factor=0.1, min_lr=0.00001):
+def build_optimizer(model, initial_lr=0.001, threshold=0.05, patience=1, factor=0.1, min_lr=0.00001):
     optimizer = optim.Adam(model.parameters(), lr=initial_lr)
     scheduler = CustomLRScheduler(optimizer, threshold, patience, factor, min_lr)
 
@@ -220,7 +220,7 @@ def build_model(config):
             num_heads=config['num_heads'],
             hidden_dim=config['hidden_dim'],
             mlp_dim=config['mlp_dim'],
-            num_classes=64800
+            num_classes=config['num_classes']
         )
     elif(config['name'] == 'CNN'):
         model = CNN(
@@ -235,6 +235,48 @@ def build_model(config):
 # save results
 import json
 import pandas as pd
+import datetime
+
+def dump_result(config, training_data):
+    # Step 1: Generate filename based on the current system time
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    file_name = f"result/result_{current_time}.md"
+    data_name = f"result/loss_{current_time}.json"
+
+    # Step 2: Dump the training data into json file.
+    all_data = {}
+    for i in range(len(training_data)):
+        data = training_data[i]
+        # Use the iteration number as the key
+        all_data[f'iteration_{i}'] = {
+            'train_loss': data[0], 
+            'train_error': data[1], 
+            'validation_loss': data[2], 
+            'validation_error': data[3]
+        }
+        print(f'train_loss = {data[0][-1]}', end=', ')
+        print(f'train_error = {data[1][-1]}')
+        print(f'validation_loss = {data[2][-1]}', end=', ')
+        print(f'validation_error = {data[3][-1]}')
+    with open(data_name, 'w') as file:
+        json.dump(all_data, file, indent=4)
+    
+    with open(file_name, 'w') as md_file:
+        # Step 3: Write config information to the markdown file
+        md_file.write("## Description\n")
+        md_file.write(f"- time: {current_time}\n\n")
+        for category, attributes in config.items():
+            md_file.write(f"## {category}\n")
+            for attr, value in attributes.items():
+                md_file.write(f"- {attr}: {value}\n")
+            md_file.write("\n")  # Add an extra newline for better readability
+        
+        # Step 4: Write training data to the file
+        md_file.write("## Training Data\n")
+        for epoch, metrics in training_data.items():
+            # Assuming the structure is like [train_loss, train_error, validation_loss, validation_error]
+            train_loss, train_error, validation_loss, validation_error = [metrics_list[-1] for metrics_list in metrics]
+            md_file.write(f"Epoch {epoch}:\n train_loss={train_loss}\n train_error={train_error}\n validation_loss={validation_loss}\n validation_error={validation_error}\n")
 
 def flatten_config(config, parent_key='', sep='_'):
     items = []
