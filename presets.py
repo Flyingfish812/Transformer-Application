@@ -49,7 +49,7 @@ class CustomLRScheduler:
             param_group['lr'] = new_lr
         print(f"Reducing learning rate to {new_lr}")
 
-def build_optimizer(model, initial_lr=0.001, threshold=0.05, patience=1, factor=0.1, min_lr=0.00001):
+def build_optimizer(model, initial_lr=0.001, threshold=0.05, patience=3, factor=0.1, min_lr=0.00001):
     optimizer = optim.Adam(model.parameters(), lr=initial_lr)
     scheduler = CustomLRScheduler(optimizer, threshold, patience, factor, min_lr)
 
