@@ -49,8 +49,8 @@ class CustomLRScheduler:
             param_group['lr'] = new_lr
         print(f"Reducing learning rate to {new_lr}")
 
-def build_optimizer(model, initial_lr=0.001, threshold=0.05, patience=3, factor=0.1, min_lr=0.00001):
-    optimizer = optim.Adam(model.parameters(), lr=initial_lr)
+def build_optimizer(model, initial_lr=0.001, threshold=0.05, patience=3, factor=0.1, min_lr=1e-20):
+    optimizer = optim.Adam(model.parameters(), lr=initial_lr, weight_decay=0.0)
     scheduler = CustomLRScheduler(optimizer, threshold, patience, factor, min_lr)
 
     return optimizer, scheduler
@@ -134,6 +134,7 @@ class CustomViT(nn.Module):
             num_heads=config['num_heads'],
             hidden_dim=config['hidden_dim'],
             mlp_dim=config['mlp_dim'],
+            dropout=0.05,
             num_classes=config['num_classes']  # Set to intermediate dimension
         )
         self.resize_block = ResizeBlock(input_dim=config['num_classes'], output_dim=64800)
@@ -176,7 +177,7 @@ class ResNet(nn.Module):
         # Choose ResNet size
         if n == 18:
             weights = ResNet18_Weights.DEFAULT
-            base_model = models.resnet18(weights=weights)
+            base_model = models.resnet18(weights=weights, num_classes = 64800)
         elif n == 34:
             # weights = ResNet34_Weights.DEFAULT
             # base_model = models.resnet34(weights=weights)
@@ -220,6 +221,7 @@ def build_model(config):
             num_heads=config['num_heads'],
             hidden_dim=config['hidden_dim'],
             mlp_dim=config['mlp_dim'],
+            dropout=0.05,
             num_classes=config['num_classes']
         )
     elif(config['name'] == 'CNN'):
@@ -229,7 +231,9 @@ def build_model(config):
             padding=config['padding'],
         )
     elif(config['name'] == 'ResNet'):
-        model = ResNet(n=config['size'])
+        # model = ResNet(n=config['size'])
+        # weights = ResNet18_Weights.DEFAULT
+        model = models.resnet18(num_classes = 64800)
     return model
 
 # save results

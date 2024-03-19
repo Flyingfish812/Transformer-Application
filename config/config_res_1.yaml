@@ -9,13 +9,13 @@ data:
   file_path: './sst_weekly.mat'
 
 training:
-  num_epochs: 5
+  num_epochs: 3
   fig_num: 1914
   batch_size: 32
   learning_rate: 0.01
   start_point: 0
   sensor_num: [100]
-  sensor_seed: [4]
+  sensor_seed: [5]
   sigma: 0.0
   input_type: "RES"
 

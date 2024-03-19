@@ -17,17 +17,20 @@ def read_hdf5(file_name):
     return (lat,lon,sst_all,time)
 
 # The input is a 180*360 map, it's used to expand to 360*360
+# Another method applied: mirroring
 def expand(map):
-    a,b = map.shape
-    size_map = max(a,b)
-    size_other = min(a,b)
-    res = np.zeros((size_map,size_map))
-    range_a = int(size_map/2-size_other/2)
-    range_b = int(size_map/2+size_other/2)
-    if a < b:
-        res[range_a:range_b,:] = map
-    else:
-        res[:,range_a:range_b] = map
+    map_mirror = np.flipud(map)
+    res = np.vstack((map,map_mirror))
+    # a,b = map.shape
+    # size_map = max(a,b)
+    # size_other = min(a,b)
+    # res = np.zeros((size_map,size_map))
+    # range_a = int(size_map/2-size_other/2)
+    # range_b = int(size_map/2+size_other/2)
+    # if a < b:
+    #     res[range_a:range_b,:] = map
+    # else:
+    #     res[:,range_a:range_b] = map
     return res
 
 # Turning a map into an input that can be used by model
@@ -43,6 +46,18 @@ def to_input(source, device, inputType = "VIT"):
     tensor = tensor.to(device)                  # To specific device
     return tensor
 
+# Normalization block, but it seems not very useful
+def normalize(tensor, min_val = -2, max_val = 40):
+    non_zero_mask = tensor != 0
+    
+    # Initialize a normalized tensor with zeros
+    normalized_tensor = torch.zeros_like(tensor, dtype=torch.float32)
+    
+    # Apply normalization only on non-zero values
+    normalized_tensor[non_zero_mask] = (tensor[non_zero_mask] - min_val) / (max_val - min_val)
+    
+    return normalized_tensor
+
 # If you want to get one sample to visualize
 def get_one_sample(n: int, lat, lon, time, sst_all, device, 
                    sigma = 0, sensor_num = 15, sensor_seed = 200, sparse_location = None, inputType = "VIT"):
@@ -52,6 +67,10 @@ def get_one_sample(n: int, lat, lon, time, sst_all, device,
     source = to_input(source, device, inputType = inputType)
     source_map = to_input(source_map, device, inputType = inputType)
     target = torch.from_numpy(target.copy()).to(device).unsqueeze(0)
+    # Normalization
+    source = normalize(source)
+    target = normalize(target)
+    
     combined_source = torch.stack([source.unsqueeze(0), source_map.unsqueeze(0), source.unsqueeze(0) * source_map.unsqueeze(0)], dim=1)
     return target, combined_source
 

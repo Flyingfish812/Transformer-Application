@@ -7,8 +7,8 @@ model:
   patch_size: 36
   num_layers: 12
   num_heads: 16
-  hidden_dim: 128
-  mlp_dim: 512
+  hidden_dim: 32
+  mlp_dim: 256
   num_classes: 64800  # Assuming 180*360
 
 data:
