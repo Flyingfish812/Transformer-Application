@@ -50,7 +50,8 @@ def main(config_path):
                    "sensor_num": config['training']['sensor_num'],
                    "sensor_seed": config['training']['sensor_seed'],
                    "sigma": config['training']['sigma'],
-                   "inputType": config['training']['input_type']}
+                   "inputType": config['training']['input_type']
+                   }
     start_time = t.time()
     training_data = train(model, data_config, optimizer, scheduler, criterion, device, method='base', step_size=16, num_epochs=num_epochs)
     end_time = t.time()
@@ -61,7 +62,7 @@ def main(config_path):
     print('Saving Model and getting training patterns... ')
     torch.save(model.state_dict(), config['output']['model_save_path'])
     
-    dump_result(config, training_data)
+    dump_result(config, training_data, exec_time, mode="train")
     print('Complete')
 
 

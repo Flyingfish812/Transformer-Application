@@ -46,18 +46,6 @@ def to_input(source, device, inputType = "VIT"):
     tensor = tensor.to(device)                  # To specific device
     return tensor
 
-# Normalization block, but it seems not very useful
-def normalize(tensor, min_val = -2, max_val = 40):
-    non_zero_mask = tensor != 0
-    
-    # Initialize a normalized tensor with zeros
-    normalized_tensor = torch.zeros_like(tensor, dtype=torch.float32)
-    
-    # Apply normalization only on non-zero values
-    normalized_tensor[non_zero_mask] = (tensor[non_zero_mask] - min_val) / (max_val - min_val)
-    
-    return normalized_tensor
-
 # If you want to get one sample to visualize
 def get_one_sample(n: int, lat, lon, time, sst_all, device, 
                    sigma = 0, sensor_num = 15, sensor_seed = 200, sparse_location = None, inputType = "VIT"):
@@ -66,18 +54,14 @@ def get_one_sample(n: int, lat, lon, time, sst_all, device,
     target, source, source_map = sst_obj.get_trainer()
     source = to_input(source, device, inputType = inputType)
     source_map = to_input(source_map, device, inputType = inputType)
-    target = torch.from_numpy(target.copy()).to(device).unsqueeze(0)
-    # Normalization
-    source = normalize(source)
-    target = normalize(target)
-    
+    target = torch.from_numpy(target.copy()).to(device).unsqueeze(0)    
     combined_source = torch.stack([source.unsqueeze(0), source_map.unsqueeze(0), source.unsqueeze(0) * source_map.unsqueeze(0)], dim=1)
     return target, combined_source
 
 # Generate the data sets
 def data_generator(lat, lon, time, sst_all, fig_num, batch_size, device,
                    start_point=0, sensor_num=None, sensor_seed=None,
-                   sigma=0, inputType="VIT", onlytest=False):
+                   sigma=0, inputType="VIT", mask = None, onlytest=False):
     if sensor_num is None:
         sensor_num = [10, 20, 30, 50, 100]
     if sensor_seed is None:
@@ -92,9 +76,9 @@ def data_generator(lat, lon, time, sst_all, fig_num, batch_size, device,
     fig_num_list = list(range(fig_num))
     np.random.shuffle(fig_num_list)
 
-    for i in fig_num_list:
-        for j in sensor_num:
-            for k in sensor_seed:
+    for j in sensor_num:
+        for k in sensor_seed:
+            for i in fig_num_list:
                 target, source = get_one_sample(start_point + i,
                                                 lat, lon, time, sst_all,
                                                 device, sigma,
@@ -109,6 +93,8 @@ def data_generator(lat, lon, time, sst_all, fig_num, batch_size, device,
                 else:
                     category = 'test'
 
+                if mask is not None:
+                    source = source * mask
                 targets.append(target)
                 sources.append(source)
 
@@ -118,11 +104,13 @@ def data_generator(lat, lon, time, sst_all, fig_num, batch_size, device,
                     current_sample += 1
                     targets, sources = [], []
 
-    # After the loop, yield any remaining samples in the batch
-    if targets:
-        yield (torch.cat(targets, dim=0), torch.cat(sources, dim=0), category)
+            # After the loop, yield any remaining samples in the batch
+            if targets:
+                yield (torch.cat(targets, dim=0), torch.cat(sources, dim=0), category)
+                current_sample += 1
+                targets, sources = [], []
 
-def factory(data_config):
+def factory(data_config, onlytest=False):
     lat, lon, time, sst_all = data_config['lat'], data_config['lon'], data_config['time'], data_config['sst_all']
     fig_num = data_config['fig_num']
     batch_size = data_config['batch_size']
@@ -132,7 +120,8 @@ def factory(data_config):
     sensor_seed = data_config['sensor_seed']
     sigma = data_config['sigma']
     inputType = data_config['inputType']
-    data_gen = data_generator(lat, lon, time, sst_all, fig_num, batch_size, device, start_point, sensor_num, sensor_seed, sigma, inputType)
+    # mask = data_config['mask']
+    data_gen = data_generator(lat, lon, time, sst_all, fig_num, batch_size, device, start_point, sensor_num, sensor_seed, sigma, inputType, onlytest)
     return data_gen
 
 def calculate_norm(output, target, type="L2"):
@@ -213,46 +202,70 @@ def train(model, data_config, optimizer, scheduler, criterion, device, method='b
     
     return training_data
 
-
-# Test function
-def test(model, data_loader, device, norm="L2"):
+# Rewritten test function
+def test(model, data_config, device, norm="L2"):
+    testing_data = {}
+    sensor_num_list = data_config['sensor_num']
+    sensor_seed_list = data_config['sensor_seed']
     model.eval()
-    train_error = 0.0
-    test_error = 0.0
-    # min_error = 10000.0
-    train_number = 0
-    test_number = 0
 
     with torch.no_grad():
-        for target, source, category in tqdm(data_loader):
-            output = model(source.to(device))
-            output = output.view(-1, 180, 360)
+        for sensor_num in sensor_num_list:
+            for sensor_seed in sensor_seed_list:
+                data_config['sensor_num'] = [sensor_num]
+                data_config['sensor_seed'] = [sensor_seed]
+                test_error = []
+                data_gen = factory(data_config, onlytest=True)
+                for target, source, _ in tqdm(data_gen):
+                    output = model(source.to(device))
+                    output = output.view(-1, 180, 360)
+                    error = calculate_norm(output, target.to(device), type=norm)
+                    test_error.append(error)
+                avg_error = sum(test_error) / len(test_error)
+                print(f'With {sensor_num} sensors at seed {sensor_seed} get an average {norm} error of {avg_error}')
+                testing_data[(sensor_num, sensor_seed)] = test_error
+        return testing_data
 
-            # L2 relative loss
-            if norm == "L2":
-                loss = torch.norm(output - target.to(device), p=2)
-                norm_val = torch.norm(target.to(device), p=2)
-                error_val = loss / norm_val
 
-            # L infinity relative loss
-            elif norm == "Linf":
-                loss = torch.max(torch.abs(output - target.to(device)))
-                norm_val = torch.max(target.to(device))
-                error_val = loss / norm_val
+# Test function
+# def test(model, data_loader, device, norm="L2"):
+#     model.eval()
+#     train_error = 0.0
+#     test_error = 0.0
+#     # min_error = 10000.0
+#     train_number = 0
+#     test_number = 0
 
-            if category == "train":
-                train_error += error_val.item()
-                train_number += 1
-            else:
-                test_error += error_val.item()
-                test_number += 1
-            # max_error = max(max_error, error_val.item())
-            # min_error = min(min_error, error_val.item())
+#     with torch.no_grad():
+#         for target, source, category in tqdm(data_loader):
+#             output = model(source.to(device))
+#             output = output.view(-1, 180, 360)
 
-    avg_error = (train_error + test_error) / (train_number + test_number) if test_number != 0 else 0
-    avg_train = train_error / train_number if train_number != 0 else 0
-    avg_test = test_error / test_number if test_number != 0 else 0
-    return avg_error, (train_number + test_number), avg_train, avg_test
+#             # L2 relative loss
+#             if norm == "L2":
+#                 loss = torch.norm(output - target.to(device), p=2)
+#                 norm_val = torch.norm(target.to(device), p=2)
+#                 error_val = loss / norm_val
+
+#             # L infinity relative loss
+#             elif norm == "Linf":
+#                 loss = torch.max(torch.abs(output - target.to(device)))
+#                 norm_val = torch.max(target.to(device))
+#                 error_val = loss / norm_val
+
+#             if category == "train":
+#                 train_error += error_val.item()
+#                 train_number += 1
+#             else:
+#                 test_error += error_val.item()
+#                 test_number += 1
+#             # max_error = max(max_error, error_val.item())
+#             # min_error = min(min_error, error_val.item())
+
+#     avg_error = (train_error + test_error) / (train_number + test_number) if test_number != 0 else 0
+#     avg_train = train_error / train_number if train_number != 0 else 0
+#     avg_test = test_error / test_number if test_number != 0 else 0
+#     return avg_error, (train_number + test_number), avg_train, avg_test
 
 
 # An SST object contains a sample map and an overall map
@@ -276,7 +289,7 @@ class SST:
         return sst_reshape
     
     def fill_nan(self,sst_reshape):
-        return np.nan_to_num(sst_reshape, nan = 0)
+        return np.nan_to_num(sst_reshape, nan = -273)
     
     def get_real_value(self):
         return self.fill_nan(self.sst)

@@ -10,6 +10,7 @@ def read_config(config_path):
 # data_loader
 import h5py
 import numpy as np
+import scipy.io as sio
 
 def load_data(file_path):
     with h5py.File(file_path, 'r') as f:
@@ -18,6 +19,11 @@ def load_data(file_path):
         sst_all = np.array(f['sst'])
         time = np.array(f['time'])
     return lat, lon, sst_all, time
+
+def load_mask(file_path):
+    data = sio.loadmat(file_path)
+    mask = data['sea']
+    return mask
 
 # optimizer
 import torch.optim as optim
@@ -241,29 +247,48 @@ import json
 import pandas as pd
 import datetime
 
-def dump_result(config, training_data):
+def dump_result(config, data_item, exec_time, mode="train"):
     # Step 1: Generate filename based on the current system time
     current_time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    file_name = f"result/result_{current_time}.md"
-    data_name = f"result/loss_{current_time}.json"
+    if (mode == "train"):
+        file_name = f"result/result_train_{current_time}.md"
+        data_name = f"result/error_train_{current_time}.json"
+    elif (mode == "test"):
+        file_name = f"result/result_test_{current_time}.md"
+        data_name = f"result/error_test_{current_time}.json"
+    else:
+        pass
 
     # Step 2: Dump the training data into json file.
-    all_data = {}
-    for i in range(len(training_data)):
-        data = training_data[i]
-        # Use the iteration number as the key
-        all_data[f'iteration_{i}'] = {
-            'train_loss': data[0], 
-            'train_error': data[1], 
-            'validation_loss': data[2], 
-            'validation_error': data[3]
-        }
-        print(f'train_loss = {data[0][-1]}', end=', ')
-        print(f'train_error = {data[1][-1]}')
-        print(f'validation_loss = {data[2][-1]}', end=', ')
-        print(f'validation_error = {data[3][-1]}')
-    with open(data_name, 'w') as file:
-        json.dump(all_data, file, indent=4)
+    if (mode == "train"):
+        all_data = {}
+        for i in range(len(data_item)):
+            data = data_item[i]
+            # Use the iteration number as the key
+            all_data[f'iteration_{i}'] = {
+                'train_loss': data[0], 
+                'train_error': data[1], 
+                'validation_loss': data[2], 
+                'validation_error': data[3]
+            }
+            print(f'train_loss = {data[0][-1]}', end=', ')
+            print(f'train_error = {data[1][-1]}')
+            print(f'validation_loss = {data[2][-1]}', end=', ')
+            print(f'validation_error = {data[3][-1]}')
+        with open(data_name, 'w') as file:
+            json.dump(all_data, file, indent=4)
+    elif (mode == "test"):
+        all_data = {}
+        i = 1
+        for sensor_info, test_error in data_item.items():
+            all_data[f'test_error_{i}'] = {
+                'sensor_num': sensor_info[0],
+                'sensor_seed': sensor_info[1],
+                'test_error': test_error
+            }
+        with open(data_name, 'w') as file:
+            json.dump(all_data, file, indent=4)
+
     
     with open(file_name, 'w') as md_file:
         # Step 3: Write config information to the markdown file
@@ -276,11 +301,20 @@ def dump_result(config, training_data):
             md_file.write("\n")  # Add an extra newline for better readability
         
         # Step 4: Write training data to the file
-        md_file.write("## Training Data\n")
-        for epoch, metrics in training_data.items():
-            # Assuming the structure is like [train_loss, train_error, validation_loss, validation_error]
-            train_loss, train_error, validation_loss, validation_error = [metrics_list[-1] for metrics_list in metrics]
-            md_file.write(f"Epoch {epoch}:\n train_loss={train_loss}\n train_error={train_error}\n validation_loss={validation_loss}\n validation_error={validation_error}\n")
+        if mode == 'train':
+            md_file.write("## Training Data\n")
+            md_file.write(f"Training time: {exec_time:.2f} seconds\n")
+            for epoch, metrics in data_item.items():
+                # Assuming the structure is like [train_loss, train_error, validation_loss, validation_error]
+                train_loss, train_error, validation_loss, validation_error = [metrics_list[-1] for metrics_list in metrics]
+                md_file.write(f"Epoch {epoch}:\n train_loss={train_loss}\n train_error={train_error}\n validation_loss={validation_loss}\n validation_error={validation_error}\n")
+        elif mode == 'test':
+            md_file.write("## Testing Data\n")
+            md_file.write(f"Testing time: {exec_time:.2f} seconds\n")
+            for sensor_info, test_error in data_item.items():
+                # Assuming the structure is like test_error
+                md_file.write(f"Number of sensor: {sensor_info[0]}; Seed for sensor: {sensor_info[1]}\n")
+                md_file.write(f"Testing error: {sum(test_error) / len(test_error)}\n")
 
 def flatten_config(config, parent_key='', sep='_'):
     items = []
