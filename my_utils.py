@@ -21,16 +21,6 @@ def read_hdf5(file_name):
 def expand(map):
     map_mirror = np.flipud(map)
     res = np.vstack((map,map_mirror))
-    # a,b = map.shape
-    # size_map = max(a,b)
-    # size_other = min(a,b)
-    # res = np.zeros((size_map,size_map))
-    # range_a = int(size_map/2-size_other/2)
-    # range_b = int(size_map/2+size_other/2)
-    # if a < b:
-    #     res[range_a:range_b,:] = map
-    # else:
-    #     res[:,range_a:range_b] = map
     return res
 
 # Turning a map into an input that can be used by model
@@ -225,48 +215,6 @@ def test(model, data_config, device, norm="L2"):
                 print(f'With {sensor_num} sensors at seed {sensor_seed} get an average {norm} error of {avg_error}')
                 testing_data[(sensor_num, sensor_seed)] = test_error
         return testing_data
-
-
-# Test function
-# def test(model, data_loader, device, norm="L2"):
-#     model.eval()
-#     train_error = 0.0
-#     test_error = 0.0
-#     # min_error = 10000.0
-#     train_number = 0
-#     test_number = 0
-
-#     with torch.no_grad():
-#         for target, source, category in tqdm(data_loader):
-#             output = model(source.to(device))
-#             output = output.view(-1, 180, 360)
-
-#             # L2 relative loss
-#             if norm == "L2":
-#                 loss = torch.norm(output - target.to(device), p=2)
-#                 norm_val = torch.norm(target.to(device), p=2)
-#                 error_val = loss / norm_val
-
-#             # L infinity relative loss
-#             elif norm == "Linf":
-#                 loss = torch.max(torch.abs(output - target.to(device)))
-#                 norm_val = torch.max(target.to(device))
-#                 error_val = loss / norm_val
-
-#             if category == "train":
-#                 train_error += error_val.item()
-#                 train_number += 1
-#             else:
-#                 test_error += error_val.item()
-#                 test_number += 1
-#             # max_error = max(max_error, error_val.item())
-#             # min_error = min(min_error, error_val.item())
-
-#     avg_error = (train_error + test_error) / (train_number + test_number) if test_number != 0 else 0
-#     avg_train = train_error / train_number if train_number != 0 else 0
-#     avg_test = test_error / test_number if test_number != 0 else 0
-#     return avg_error, (train_number + test_number), avg_train, avg_test
-
 
 # An SST object contains a sample map and an overall map
 class SST:

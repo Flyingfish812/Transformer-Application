@@ -286,6 +286,7 @@ def dump_result(config, data_item, exec_time, mode="train"):
                 'sensor_seed': sensor_info[1],
                 'test_error': test_error
             }
+            i += 1
         with open(data_name, 'w') as file:
             json.dump(all_data, file, indent=4)
 
@@ -316,6 +317,7 @@ def dump_result(config, data_item, exec_time, mode="train"):
                 md_file.write(f"Number of sensor: {sensor_info[0]}; Seed for sensor: {sensor_info[1]}\n")
                 md_file.write(f"Testing error: {sum(test_error) / len(test_error)}\n")
 
+# Useless now
 def flatten_config(config, parent_key='', sep='_'):
     items = []
     for k, v in config.items():
@@ -326,6 +328,7 @@ def flatten_config(config, parent_key='', sep='_'):
             items.append((new_key, v))
     return dict(items)
 
+# Useless now
 def save_results(config_file_path, test_results, output_type = 'json', results_output='test_results'):
     results_output_path = f'result/{results_output}.{output_type}'
     # Read YAML configurations

@@ -39,7 +39,6 @@ def main(config_path):
 
     batch_size = config['testing']['batch_size']
     norm = config['testing']['norm']
-    criterion = nn.MSELoss()
     print('Complete')
 
     # Testing
@@ -61,7 +60,6 @@ def main(config_path):
     # Save the results
     print('Saving Result ... ', end='')
     dump_result(config, testing_data, exec_time, mode="test")
-    # save_results(config_path, test_result, output_type = 'xlsx', results_output = config['output']['model_result'])
     print('Complete')
 
 
