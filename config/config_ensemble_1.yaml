@@ -1,6 +1,6 @@
 # config file for vision transformer
 
-model:
+model_1:
   name: 'VisionTransformer'
   load_weights: False
   image_size: 360
@@ -10,6 +10,19 @@ model:
   hidden_dim: 32
   mlp_dim: 256
   num_classes: 64800  # Assuming 180*360
+  path: 'model/sst_vit_test_2.pth'
+
+model_2:
+  name: 'ResNet'
+  load_weights: False
+  size: 18
+  path: 'model/sst_res_test.pth'
+
+model:
+  name: 'EnsembleModel'
+  method: 'blending'
+  load_weights: False
+  num_models: 2
 
 data:
   file_path: './sst_weekly.mat'
@@ -18,7 +31,7 @@ training:
   num_epochs: 3
   fig_num: 1914
   batch_size: 32
-  learning_rate: 0.1
+  learning_rate: 0.01
   start_point: 0
   sensor_num: [100]
   sensor_seed: [4]
@@ -40,4 +53,4 @@ device:
 
 output:
   model_result: 'sst_vit_result_2'
-  model_save_path: 'model/sst_vit_test_2.pth'
+  model_save_path: 'model/sst_ensemble_test_2.pth'

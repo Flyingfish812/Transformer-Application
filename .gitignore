@@ -1,6 +1,8 @@
 *.pth
 *.mat
 *.ipynb
+*.xlsx
+Voronoi-*.py
 result
 dataset_*.py
 __pycache__

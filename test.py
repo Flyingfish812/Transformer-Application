@@ -55,7 +55,7 @@ def main(config_path):
     testing_data = test(model, data_config, device, norm=norm)
     end_time = t.time()
     exec_time = end_time - start_time
-    print('Testing Complete')
+    print(f'Testing Complete in {exec_time:.2f} seconds')
 
     # Save the results
     print('Saving Result ... ', end='')

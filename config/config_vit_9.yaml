@@ -36,7 +36,7 @@ testing:
   sensor_seed:
   - 4
   - 9
-  sigma: 0.1
+  sigma: 0.4
   input_type: VIT
 device:
   prefer_gpu: true

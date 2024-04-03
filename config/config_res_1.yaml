@@ -15,17 +15,17 @@ training:
   learning_rate: 0.01
   start_point: 0
   sensor_num: [100]
-  sensor_seed: [5]
+  sensor_seed: [4]
   sigma: 0.0
   input_type: "RES"
 
 testing:
   fig_num: 256
   batch_size: 32
-  start_point: 0
+  start_point: 1656
   norm: "L2"
-  sensor_num: [100]
-  sensor_seed: [4]
+  sensor_num: [10,20]
+  sensor_seed: [4,9]
   sigma: 0.0
   input_type: "RES"
 

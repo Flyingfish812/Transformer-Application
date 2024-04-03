@@ -11,20 +11,23 @@ data:
   file_path: './sst_weekly.mat'
 
 training:
-  batch_size: 128
-  learning_rate: 0.001
-  start_point: 10
-  sensor_num: [10]
-  sensor_seed: [4, 20, 75, 138, 278]
+  num_epochs: 3
+  fig_num: 1914
+  batch_size: 32
+  learning_rate: 0.01
+  start_point: 0
+  sensor_num: [100]
+  sensor_seed: [4]
   sigma: 0.0
   input_type: "CNN"
 
 testing:
-  batch_size: 10
-  start_point: 1098
+  fig_num: 256
+  batch_size: 32
+  start_point: 1656
   norm: "L2"
-  sensor_num: [20, 30, 50, 70, 100, 200]
-  sensor_seed: [553, 897, 1016, 1255, 1437]
+  sensor_num: [10,20]
+  sensor_seed: [4,9]
   sigma: 0.0
   input_type: "CNN"
 

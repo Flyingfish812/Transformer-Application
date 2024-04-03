@@ -45,7 +45,10 @@ def get_one_sample(n: int, lat, lon, time, sst_all, device,
     source = to_input(source, device, inputType = inputType)
     source_map = to_input(source_map, device, inputType = inputType)
     target = torch.from_numpy(target.copy()).to(device).unsqueeze(0)    
-    combined_source = torch.stack([source.unsqueeze(0), source_map.unsqueeze(0), source.unsqueeze(0) * source_map.unsqueeze(0)], dim=1)
+    if inputType == "CNN":
+        combined_source = source.unsqueeze(0).unsqueeze(0)
+    else:
+        combined_source = torch.stack([source.unsqueeze(0), source_map.unsqueeze(0), source.unsqueeze(0) * source_map.unsqueeze(0)], dim=1)
     return target, combined_source
 
 # Generate the data sets
@@ -111,7 +114,7 @@ def factory(data_config, onlytest=False):
     sigma = data_config['sigma']
     inputType = data_config['inputType']
     # mask = data_config['mask']
-    data_gen = data_generator(lat, lon, time, sst_all, fig_num, batch_size, device, start_point, sensor_num, sensor_seed, sigma, inputType, onlytest)
+    data_gen = data_generator(lat, lon, time, sst_all, fig_num, batch_size, device, start_point, sensor_num, sensor_seed, sigma, inputType, onlytest=onlytest)
     return data_gen
 
 def calculate_norm(output, target, type="L2"):
@@ -146,9 +149,9 @@ def train(model, data_config, optimizer, scheduler, criterion, device, method='b
         train_loss, train_error = [], []
         validation_loss, validation_error = [], []
         data_gen = factory(data_config)
-        if epoch > 0:
-            for param_group in optimizer.param_groups:
-                param_group['lr'] *= 0.1
+        # if epoch > 0:
+        #     for param_group in optimizer.param_groups:
+        #         param_group['lr'] *= 0.1
         for target, source, category in tqdm(data_gen):
             if category == 'train':
                 count += 1
