@@ -29,3 +29,7 @@ Usage:
 2. Define a main file (example format in: `main_pack.py`)
 
 3. Run the file in command line (example: `python main_pack.py config/config_pack_vit_1.yaml`), or use the batch/bash file (example format in: `run.bat`)
+
+## Data Availability
+
+[NOAA sea surface temperature set](https://drive.google.com/drive/folders/1pVW4epkeHkT2WHZB7Dym5IURcfOP4cXu)
