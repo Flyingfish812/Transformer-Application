@@ -24,6 +24,7 @@ training:
   sensor_seed: [4]
   sigma: 0.0
   input_type: "VIT"
+  n: 9
 
 testing:
   fig_num: 256
@@ -40,4 +41,4 @@ device:
 
 output:
   model_result: 'sst_vit_result_2'
-  model_save_path: 'model/sst_vit_test_2.pth'
+  model_save_path: 'model/sst_vit_test_3.pth'

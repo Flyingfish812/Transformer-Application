@@ -1,0 +1,54 @@
+# config file for vision transformer
+
+model:
+  name: 'VisionTransformer'
+  model_save_path: 'model/sst_vit_pack_test_1.pth'
+  load_weights: False
+  image_size: 360
+  patch_size: 36
+  num_layers: 12
+  num_heads: 16
+  hidden_dim: 32
+  mlp_dim: 256
+  num_classes: 64800  
+
+data:
+  input_source: ''
+  output_source: './sst_weekly.mat'
+  input_name: ''
+  output_name: 'sst'
+  need_sparse: True
+  map: ''
+  sigma: 0.0
+  lat: 180
+  lon: 360
+  nan: -273
+  sensor_seed: 4
+  sensor_num: 100
+  total_fignum: 1914
+  batch_size: 32
+  only_test: False
+  cross_validation_num: 0
+
+train:
+  lat: 180
+  lon: 360
+  method: base
+  input_type: 'VIT'
+  device: 'cuda'
+  train_epoch: 3
+  step_size: 16
+  learning_rate: 0.1
+
+test:
+  fig_num: 256
+  batch_size: 32
+  start_point: 1656
+  norm: "L2"
+  sensor_num: [10,20,30,50,100]
+  sensor_seed: [4,9]
+  sigma: 0.0
+  input_type: "VIT"
+
+output:
+  model_result: 'sst_vit_result_2'

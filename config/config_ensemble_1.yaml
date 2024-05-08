@@ -10,19 +10,28 @@ model_1:
   hidden_dim: 32
   mlp_dim: 256
   num_classes: 64800  # Assuming 180*360
-  path: 'model/sst_vit_test_2.pth'
+  path: 'model/sst_vit_273.pth'
 
 model_2:
   name: 'ResNet'
   load_weights: False
   size: 18
-  path: 'model/sst_res_test.pth'
+  path: 'model/sst_res_273.pth'
+
+model_3:
+  model:
+  name: 'CNN'
+  load_weights: False
+  channels: 48
+  kernel_size: 7
+  padding: 3
+  path: 'model/sst_cnn_273.pth'
 
 model:
   name: 'EnsembleModel'
   method: 'blending'
   load_weights: False
-  num_models: 2
+  num_models: 3
 
 data:
   file_path: './sst_weekly.mat'

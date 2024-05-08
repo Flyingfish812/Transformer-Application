@@ -17,3 +17,15 @@
 The models' parameters will be saved in a new folder named `model`.
 
 `run.bat` is a batch file that can automatically run the training and testing, you can change the commands in this file to run the code on different configs.
+
+## PFRTool Library
+
+This library contains all the useful functions used in this project
+
+Usage:
+
+1. Define a config file (example format in: `config/config_pack_vit_1.yaml`)
+
+2. Define a main file (example format in: `main_pack.py`)
+
+3. Run the file in command line (example: `python main_pack.py config/config_pack_vit_1.yaml`), or use the batch/bash file (example format in: `run.bat`)

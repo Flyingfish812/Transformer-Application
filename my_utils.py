@@ -39,35 +39,47 @@ def to_input(source, device, inputType = "VIT"):
 # If you want to get one sample to visualize
 def get_one_sample(n: int, lat, lon, time, sst_all, device, 
                    sigma = 0, sensor_num = 15, sensor_seed = 200, sparse_location = None, inputType = "VIT"):
+    n = int(n)
     sst = sst_all[n]
     sst_obj = SST(lat, lon, sst, time, sensor_num, sensor_seed, sparse_location, sigma)
     target, source, source_map = sst_obj.get_trainer()
     source = to_input(source, device, inputType = inputType)
     source_map = to_input(source_map, device, inputType = inputType)
     target = torch.from_numpy(target.copy()).to(device).unsqueeze(0)    
-    if inputType == "CNN":
-        combined_source = source.unsqueeze(0).unsqueeze(0)
-    else:
-        combined_source = torch.stack([source.unsqueeze(0), source_map.unsqueeze(0), source.unsqueeze(0) * source_map.unsqueeze(0)], dim=1)
+    # if inputType == "CNN":
+    #     combined_source = source.unsqueeze(0).unsqueeze(0)
+    # else:
+    #     combined_source = torch.stack([source.unsqueeze(0), source_map.unsqueeze(0), source.unsqueeze(0) * source_map.unsqueeze(0)], dim=1)
+    combined_source = torch.stack([source.unsqueeze(0), source_map.unsqueeze(0), source.unsqueeze(0) * source_map.unsqueeze(0)], dim=1)
     return target, combined_source
+
+# Function for cross validation, use swap to ensure that each 10% data can be the validation set.
+def n_swap(arr, n):
+    num_elements = len(arr)
+    swap_size = int(num_elements * n * 0.1)
+    last_part = arr[-swap_size:]
+    first_part = arr[:-swap_size]
+    return np.concatenate([last_part, first_part])
 
 # Generate the data sets
 def data_generator(lat, lon, time, sst_all, fig_num, batch_size, device,
                    start_point=0, sensor_num=None, sensor_seed=None,
-                   sigma=0, inputType="VIT", mask = None, onlytest=False):
+                   sigma=0, inputType="VIT", n=0, mask = None, onlytest=False):
     if sensor_num is None:
         sensor_num = [10, 20, 30, 50, 100]
     if sensor_seed is None:
         sensor_seed = [1, 10, 25, 51, 199]
 
     total_samples = fig_num * len(sensor_num) * len(sensor_seed) // batch_size
-    train_cutoff = int(0.85 * total_samples)
+    train_cutoff = int(0.9 * total_samples)
     verify_cutoff = train_cutoff + int(0.1 * total_samples)
 
     current_sample = 0
     targets, sources = [], []
     fig_num_list = list(range(fig_num))
+    np.random.seed(0)
     np.random.shuffle(fig_num_list)
+    fig_num_list = n_swap(fig_num_list, n)
 
     for j in sensor_num:
         for k in sensor_seed:
@@ -113,8 +125,12 @@ def factory(data_config, onlytest=False):
     sensor_seed = data_config['sensor_seed']
     sigma = data_config['sigma']
     inputType = data_config['inputType']
+    if 'n' in data_config:
+        n = data_config['n']
+    else:
+        n = 0
     # mask = data_config['mask']
-    data_gen = data_generator(lat, lon, time, sst_all, fig_num, batch_size, device, start_point, sensor_num, sensor_seed, sigma, inputType, onlytest=onlytest)
+    data_gen = data_generator(lat, lon, time, sst_all, fig_num, batch_size, device, start_point, sensor_num, sensor_seed, sigma, inputType, n=n, onlytest=onlytest)
     return data_gen
 
 def calculate_norm(output, target, type="L2"):

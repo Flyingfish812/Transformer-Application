@@ -2,7 +2,7 @@
 
 model:
   name: 'CNN'
-  load_weights: True
+  load_weights: False
   channels: 48
   kernel_size: 7
   padding: 3
@@ -18,9 +18,8 @@ training:
   start_point: 0
   sensor_num: [100]
   sensor_seed: [4]
-  sigma: 0.0
+  sigma: 0.15
   input_type: "CNN"
-  n: 0
 
 testing:
   fig_num: 256
@@ -37,4 +36,4 @@ device:
 
 output:
   model_result: 'sst_cnn_result_1'
-  model_save_path: 'model/sst_cnn_test_1.pth'
+  model_save_path: 'model/sst_cnn_test_2.pth'

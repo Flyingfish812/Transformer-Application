@@ -81,43 +81,11 @@ class ScaledL2RelativeErrorLoss(nn.Module):
 # model
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.models as models
 from torchvision.models.resnet import ResNet101_Weights, ResNet50_Weights, ResNet34_Weights, ResNet18_Weights
 from torchvision.models import vision_transformer as vit
-import torchvision.transforms.functional as F
-
-# class ResizeBlock(nn.Module):
-#     def __init__(self, input_dim, output_dim=(180,360), intermediate_channels=8):
-#         super(ResizeBlock, self).__init__()
-#         self.intermediate_channels = intermediate_channels
-#         # Calculate the size needed to reshape the input tensor before applying convolutions
-#         self.pre_conv_size = (1, int(input_dim ** 0.5), int(input_dim ** 0.5))  # Example size, adjust based on your model's architecture
-        
-#         self.conv1 = nn.Conv2d(in_channels=1, out_channels=intermediate_channels, kernel_size=(7, 7))
-#         self.bn1 = nn.BatchNorm2d(intermediate_channels)
-#         self.relu = nn.ReLU(inplace=True)
-#         self.conv2 = nn.Conv2d(in_channels=intermediate_channels, out_channels=1, kernel_size=(7, 7))
-        
-#         # Additional layers can be added here if needed for further processing
-        
-#         # Adaptive pooling layer to match the output dimensions
-#         self.adaptive_pool = nn.AdaptiveAvgPool2d(output_dim)
-        
-#     def forward(self, x):
-#         # Reshape x from (batch_size, input_dim) to (batch_size, intermediate_channels, H, W)
-#         # Note: The reshape dimensions must align with the model's architecture and expected input size of the first conv layer
-#         x = x.view(-1, *self.pre_conv_size)
-#         x = self.conv1(x)
-#         x = self.bn1(x)
-#         x = self.relu(x)
-#         x = self.conv2(x)
-        
-#         # Apply adaptive pooling to achieve the desired output size
-#         x = self.adaptive_pool(x)
-        
-#         # Flatten the output to match the target dimension (batch_size, 64800)
-#         x = x.view(x.size(0), -1)
-#         return x
+# import torchvision.transforms.functional as F
 
 class ResizeBlock(nn.Module):
     def __init__(self, input_dim, output_dim=64800):
@@ -177,6 +145,105 @@ class CNN(nn.Module):
         x = self.conv_layers(x)
         return x
 
+class BasicCNN(nn.Module):
+    def __init__(self):
+        super(BasicCNN, self).__init__()
+        # 第一层卷积层
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=64, kernel_size=7, stride=2, padding=3)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        
+        # 第二层卷积层
+        self.conv2 = nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1)
+        self.bn2 = nn.BatchNorm2d(128)
+        
+        # 第三层卷积层
+        self.conv3 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
+        self.bn3 = nn.BatchNorm2d(256)
+        
+        # 第四层卷积层
+        self.conv4 = nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1)
+        self.bn4 = nn.BatchNorm2d(512)
+        
+        # 自适应平均池化层
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        # 全连接层
+        self.fc = nn.Linear(512, 360*180)  # 假设最终输出的tensor大小为180*360
+
+    def forward(self, x):
+        x = self.maxpool(self.relu(self.bn1(self.conv1(x))))
+        x = self.relu(self.bn2(self.conv2(x)))
+        x = self.relu(self.bn3(self.conv3(x)))
+        x = self.relu(self.bn4(self.conv4(x)))
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+        x = x.view(-1, 180, 360)  # 调整输出形状与目标一致
+        return x
+
+class DeepCNN(nn.Module):
+    def __init__(self):
+        super(DeepCNN, self).__init__()
+        # 第一层卷积层
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(64)
+        
+        # 第二层卷积层
+        self.conv2 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(128)
+        
+        # 第三层卷积层
+        self.conv3 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
+        self.bn3 = nn.BatchNorm2d(256)
+        
+        # 第四层卷积层
+        self.conv4 = nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1)
+        self.bn4 = nn.BatchNorm2d(512)
+
+        # 第五层卷积层
+        self.conv5 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
+        self.bn5 = nn.BatchNorm2d(512)
+        
+        # 第六层卷积层
+        self.conv6 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
+        self.bn6 = nn.BatchNorm2d(512)
+
+        # 第七层卷积层
+        self.conv7 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
+        self.bn7 = nn.BatchNorm2d(512)
+        
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+        
+        # 自适应平均池化层
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        # 全连接层
+        self.fc = nn.Linear(512, 360*180)  # 假设最终输出的tensor大小为180*360
+
+    def forward(self, x):
+        x = self.relu(self.bn1(self.conv1(x)))
+        x = self.maxpool(x)  # 应用池化减少维度
+        
+        x = self.relu(self.bn2(self.conv2(x)))
+        x = self.maxpool(x)  # 应用池化减少维度
+
+        x = self.relu(self.bn3(self.conv3(x)))
+        x = self.relu(self.bn4(self.conv4(x)))
+        x = self.maxpool(x)  # 应用池化减少维度
+
+        x = self.relu(self.bn5(self.conv5(x)))
+        x = self.relu(self.bn6(self.conv6(x)))
+        x = self.relu(self.bn7(self.conv7(x)))
+        
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
+        x = x.view(-1, 64800)  # 调整输出形状与目标一致
+        return x
+
 class ResNet(nn.Module):
     def __init__(self, input_shape=(180, 360), n=18):
         super(ResNet, self).__init__()
@@ -231,11 +298,12 @@ def build_model(config):
             num_classes=config['num_classes']
         )
     elif(config['name'] == 'CNN'):
-        model = CNN(
-            channels=config['channels'],
-            kernel_size=config['kernel_size'],
-            padding=config['padding'],
-        )
+        # model = CNN(
+        #     channels=config['channels'],
+        #     kernel_size=config['kernel_size'],
+        #     padding=config['padding'],
+        # )
+        model = DeepCNN()
     elif(config['name'] == 'ResNet'):
         # model = ResNet(n=config['size'])
         # weights = ResNet18_Weights.DEFAULT
